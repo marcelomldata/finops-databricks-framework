@@ -86,7 +86,7 @@ finops-databricks/
 
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/[seu-repo]/finops-databricks-framework.git
+git clone https://github.com/marcelomldata/finops-databricks-framework/finops-databricks-framework.git
 cd finops-databricks-framework
 
 # 2. Instale dependências
@@ -292,5 +292,5 @@ Veja [CHANGELOG.md](CHANGELOG.md) para histórico completo e [Lacunas e Evoluç�
 
 ## Contato: marcelo@mldata.com.br
 
-- Issues: [GitHub Issues](https://github.com/[seu-repo]/issues)
+- Issues: [GitHub Issues](https://github.com/marcelomldata/finops-databricks-framework/issues)
 - Professional Services: [ML Data e IA](docs/PROFESSIONAL_SERVICES.md)
