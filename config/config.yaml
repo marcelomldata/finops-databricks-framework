@@ -1,0 +1,53 @@
+workspaces:
+  - name: workspace_azure_1
+    cloud: azure
+    workspace_url: https://adb-xxxxx.azuredatabricks.net
+    metastore_type: unity_catalog
+    enabled: true
+  
+  - name: workspace_aws_1
+    cloud: aws
+    workspace_url: https://xxxxx.cloud.databricks.com
+    metastore_type: hive
+    enabled: true
+
+collection:
+  compute:
+    enabled: true
+    frequency: daily
+    retention_days: 90
+  
+  storage:
+    enabled: true
+    frequency: daily
+    retention_days: 90
+  
+  jobs:
+    enabled: true
+    frequency: daily
+    retention_days: 90
+  
+  billing:
+    enabled: true
+    frequency: daily
+    retention_days: 365
+
+analysis:
+  compute:
+    idle_threshold_hours: 4
+    low_utilization_threshold: 0.3
+    overprovisioning_threshold: 0.5
+  
+  storage:
+    cold_data_days: 90
+    abandoned_table_days: 180
+    small_file_threshold_mb: 128
+  
+  maturity_score:
+    weights:
+      compute: 0.25
+      storage: 0.25
+      governance: 0.20
+      pipelines: 0.15
+      observability: 0.10
+      costs: 0.05
