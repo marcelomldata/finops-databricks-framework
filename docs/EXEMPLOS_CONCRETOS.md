@@ -27,9 +27,16 @@ notebooks/03_analyze/01_calculate_maturity_score.py
 notebooks/03_analyze/02_generate_recommendations.py
 ```
 
-#### Resultados do Assessment
+#### Resultados do Assessment (v2.1)
 
 **Maturity Score Inicial: 0.42 (Básico)**
+
+**Benchmark Externo:**
+- Custo por TB: $125.00 (average) - Mediana da indústria
+- Utilização: 0.35 (poor) - Abaixo da mediana
+- Taxa de Sucesso: 0.78 (poor) - Abaixo da mediana
+- Dados Frios: 35% (poor) - Acima da mediana
+- **Nível Geral: Average** - Comparável à mediana da indústria
 
 ```
 Compute Score: 0.35
@@ -122,10 +129,12 @@ Costs Score: 0.85 (+35 pontos)
 - Tendência: -25% ao mês
 ```
 
-**ROI Real:**
+**ROI Real (v2.1):**
 - Redução de custos: 35% ($45.000/mês)
 - Economia anual: $540.000
 - Payback: 2 meses
+- **Confiança do ROI: 0.85 (high)** - Reconciliado com billing real
+- **Variação estimado vs real: 3.2%** - Alta precisão
 
 ---
 

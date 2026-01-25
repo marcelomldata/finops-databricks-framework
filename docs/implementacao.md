@@ -57,6 +57,7 @@ Executar DDLs em ordem:
 2. `sql/ddl/silver_ddl.sql`
 3. `sql/ddl/gold_ddl.sql`
 4. `sql/ddl/gold_baselines_ddl.sql` (v2.0 - baselines e cost allocation)
+5. `sql/ddl/gold_enhanced_ddl.sql` (v2.1 - billing, automação, benchmarks, observabilidade)
 
 ## Execução
 
@@ -109,6 +110,26 @@ Executar DDLs em ordem:
 #### Criar Baseline (v2.0)
 ```python
 # notebooks/03_analyze/03_create_baseline.py
+```
+
+#### Calcular Benchmarks (v2.1)
+```python
+# notebooks/03_analyze/04_calculate_benchmarks.py
+```
+
+#### Reconciliar Billing (v2.1)
+```python
+# notebooks/03_analyze/05_reconcile_billing.py
+```
+
+#### Alocar Custos por Pipeline (v2.1)
+```python
+# notebooks/03_analyze/06_allocate_pipeline_costs.py
+```
+
+#### Gerar Alertas de Automação (v2.1)
+```python
+# notebooks/03_analyze/07_generate_automation_alerts.py
 ```
 
 ## Agendamento

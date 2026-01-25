@@ -21,7 +21,11 @@ Ser o framework open source de referência para assessment contínuo e otimizaç
 - ✅ **Recomendações Priorizadas** - Ações acionáveis com ROI estimado
 - ✅ **Custos DBU Reais** - Estimativa baseada em uptime e taxas DBU (v2.0)
 - ✅ **Baseline Versionado** - Comparação entre múltiplos períodos (v2.0)
-- ✅ **Cost Allocation** - Alocação por domínio e tags (v2.0)
+- ✅ **Cost Allocation** - Alocação por domínio, pipeline, produto e SLA (v2.0, v2.1)
+- ✅ **Billing Reconciliado** - Comparação estimado vs real com score de confiança (v2.1)
+- ✅ **Safe Automation** - Alertas com ações sugeridas e comandos prontos (v2.1)
+- ✅ **Benchmarks Externos** - Comparação com níveis da indústria (v2.1)
+- ✅ **Observabilidade Avançada** - Análise de falhas, performance e correlação custo (v2.1)
 
 ## Arquitetura
 
@@ -255,7 +259,13 @@ finops-databricks-framework/
   - Integração real com custos DBU (open source)
   - Baseline técnico versionado
   - Cost allocation por domínio
-- 🚀 **Em desenvolvimento** - Veja [ROADMAP.md](ROADMAP.md) e [Melhorias V2](docs/MELHORIAS_V2.md)
+- ✅ **v2.1.0** - Melhorias enterprise implementadas
+  - Reconciliador de billing (read-only)
+  - Cost allocation por pipeline/produto/SLA
+  - Safe automation (alertas com ações)
+  - Benchmarks externos
+  - Observabilidade avançada
+- 🚀 **Em desenvolvimento** - Veja [ROADMAP.md](ROADMAP.md), [Melhorias V2](docs/MELHORIAS_V2.md) e [Lacunas e Evolução](docs/LACUNAS_EVOLUCAO.md)
 
 ## ⚠️ Nota Importante
 
@@ -265,15 +275,22 @@ Veja [Open vs Premium](docs/OPEN_VS_PREMIUM.md) para detalhes completos.
 
 ## 📦 Versão Atual
 
-**v2.0.0** - Melhorias críticas implementadas:
+**v2.1.0** - Melhorias enterprise implementadas:
+- ✅ Reconciliador de billing (read-only)
+- ✅ Cost allocation por pipeline/produto/SLA
+- ✅ Safe automation (alertas com ações)
+- ✅ Benchmarks externos (comparação com indústria)
+- ✅ Observabilidade avançada (falhas, performance, correlação)
+
+**v2.0.0** - Melhorias críticas:
 - ✅ Integração real com custos DBU (open source)
 - ✅ Baseline técnico versionado
 - ✅ Cost allocation por domínio
 - ✅ Modelo operacional FinOps
 
-Veja [CHANGELOG.md](CHANGELOG.md) para histórico completo.
+Veja [CHANGELOG.md](CHANGELOG.md) para histórico completo e [Lacunas e Evolução](docs/LACUNAS_EVOLUCAO.md) para detalhes das melhorias.
 
-## 📞 Contato
+## Contato: marcelo@mldata.com.br
 
 - Issues: [GitHub Issues](https://github.com/[seu-repo]/issues)
 - Professional Services: [ML Data e IA](docs/PROFESSIONAL_SERVICES.md)

@@ -25,6 +25,7 @@
 - [Checklist de Assessment](checklist_assessment.md) - Checklist para diagnóstico
 - [Segurança](SEGURANCA.md) - Proteção de credenciais e boas práticas
 - [Melhorias V2](MELHORIAS_V2.md) - Melhorias críticas v2.0.0
+- [Lacunas e Evolução](LACUNAS_EVOLUCAO.md) - Lacunas identificadas e melhorias v2.1.0
 - [Roadmap](roadmap.md) - Roadmap de evolução
 - [Jobs Exemplo](jobs_exemplo.json) - Exemplo de configuração de jobs
 

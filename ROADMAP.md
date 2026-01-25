@@ -31,7 +31,19 @@ Veja [Melhorias V2](docs/MELHORIAS_V2.md) para detalhes completos.
 
 ## Q1 2025
 
-### v2.1.0 - CLI e Testes
+### v2.1.0 - Melhorias Críticas Enterprise ✅
+
+**Objetivo**: Endereçar lacunas críticas identificadas
+
+- [x] Reconciliador de billing (read-only)
+- [x] Cost allocation por pipeline/produto/SLA
+- [x] Safe automation (alertas com ações)
+- [x] Benchmarks externos (heurísticos)
+- [x] Observabilidade avançada
+
+**Prazo**: Janeiro 2025 ✅
+
+### v2.2.0 - CLI e Testes
 
 **Objetivo**: CLI standalone e testes automatizados
 
@@ -43,7 +55,7 @@ Veja [Melhorias V2](docs/MELHORIAS_V2.md) para detalhes completos.
 
 **Prazo**: Março 2025
 
-### v2.2.0 - Integração System Tables
+### v2.3.0 - Integração System Tables
 
 **Objetivo**: Integração com system tables e melhorias de precisão
 
@@ -52,6 +64,8 @@ Veja [Melhorias V2](docs/MELHORIAS_V2.md) para detalhes completos.
 - [ ] Validação de hierarquia de tags
 - [ ] Templates de tagging corporativo
 - [ ] Storytelling executivo
+- [ ] Adapter de billing melhorado (arquivos export)
+- [ ] Templates de chargeback/showback
 
 **Prazo**: Junho 2025
 
