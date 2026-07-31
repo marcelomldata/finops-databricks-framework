@@ -1,5 +1,8 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, lit, abs as spark_abs, round, current_timestamp
+from pyspark.sql.functions import col, when, lit, abs as spark_abs
+# `round` e `current_timestamp` NÃO vêm do Spark aqui: `round` só era usado nos
+# dicts de resultado (valores Python) — a versão Spark viraria `Column` e
+# quebraria o relatório; `current_timestamp` sequer era usado. Usa o builtin.
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -31,7 +34,11 @@ def reconcile_dbu_vs_actual(
             if df_billing.count() > 0:
                 actual_cost = df_billing.agg({"daily_cost_usd": "sum"}).collect()[0][0] or 0.0
                 actual_cost = actual_cost * 30 / df_billing.count()
-        except:
+        except Exception as e:
+            # Billing pode legitimamente não ter sido coletado — cai para
+            # estimativa-só. Mas LOGA: silenciar isso escondia o motivo de a
+            # reconciliação não ter custo real.
+            print(f"[billing_reconciler] custo real indisponível para {workspace_name}, usando estimativa: {e}")
             actual_cost = None
     
     if actual_cost is None or actual_cost == 0:

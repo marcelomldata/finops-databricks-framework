@@ -29,7 +29,11 @@ def extract_cost_allocation_tags(
                     "project": tags.get("project") or tags.get("Project") or "",
                     "owner": tags.get("owner") or tags.get("Owner") or ""
                 }
-        except:
+        except Exception:
+            # Tag malformada em UMA linha vira alocação vazia (degradação
+            # aceitável, por linha). `except Exception` para não engolir sinais
+            # de interrupção. (A fragilidade do `.replace("'",'"')` é tratada na
+            # troca por chave estável — ver PLANO_DE_ACAO, Fase 4.)
             pass
         return {
             "cost_center": "",

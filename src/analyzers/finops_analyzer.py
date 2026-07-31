@@ -168,7 +168,12 @@ def calculate_costs_score(spark: SparkSession, workspace_name: str) -> float:
                 return 0.5
             else:
                 return 0.3
-        except Exception:
+        except Exception as e:
+            # Fallback neutro (0.5) quando a tendência de custo não pôde ser
+            # calculada — mas LOGA: sem isto, uma falha de dados virava um score
+            # médio silencioso, e o assessment "passava" reportando um número
+            # que ninguém sabia ser fallback.
+            print(f"[finops_analyzer] score de tendência de custo falhou, usando fallback 0.5: {e}")
             return 0.5
 
 def calculate_maturity_score(spark: SparkSession, workspace_name: str, weights: Dict[str, float] = None) -> Dict:

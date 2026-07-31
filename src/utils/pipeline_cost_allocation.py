@@ -98,5 +98,8 @@ def get_cost_by_product(
             "by_pipeline": df_allocation.groupBy("pipeline_name").agg({"estimated_monthly_cost": "sum"}).collect(),
             "by_sla": df_allocation.groupBy("sla_tier").agg({"estimated_monthly_cost": "sum"}).collect()
         }
-    except:
+    except Exception as e:
+        # Antes engolia QUALQUER falha e devolvia alocação vazia — o assessment
+        # "passava" sem custo por pipeline e ninguém sabia por quê. Agora loga.
+        print(f"[pipeline_cost_allocation] alocação por pipeline/produto/SLA falhou: {e}")
         return {}

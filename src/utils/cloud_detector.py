@@ -13,14 +13,17 @@ def detect_cloud_from_url(workspace_url: str) -> str:
         raise ValueError(f"Cloud não identificada para URL: {workspace_url}")
 
 def detect_metastore_type(spark) -> str:
+    # Fallback de detecção (não é erro): SHOW CATALOGS falha em metastore Hive,
+    # então a exceção aqui é esperada e é o próprio sinal. `except Exception`
+    # (não bare) para não engolir KeyboardInterrupt/SystemExit.
     try:
         spark.sql("SHOW CATALOGS").collect()
         return "unity_catalog"
-    except:
+    except Exception:
         try:
             spark.sql("SHOW DATABASES").collect()
             return "hive"
-        except:
+        except Exception:
             return "unknown"
 
 def get_workspace_id_from_url(workspace_url: str) -> str:

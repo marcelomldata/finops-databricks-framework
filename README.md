@@ -74,7 +74,7 @@ finops-databricks/
 
 ## Instalação
 
-1. Instalar dependências: `pip install -r requirements.txt`
+1. Instalar dependências: `pip install -r requirements.txt` e o pacote em modo editável: `pip install -e .` (torna `from src...` importável nos notebooks). Coleta de billing das nuvens é opcional: `pip install -r requirements-billing.txt`
 2. Copiar `env.example` para `.env` e configurar credenciais
 3. Executar DDLs em `sql/ddl/` para criar tabelas
 4. Configurar `config/config.yaml` com workspaces

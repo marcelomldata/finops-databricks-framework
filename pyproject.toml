@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finops-databricks-framework"
+version = "2.1.0"
+description = "Framework open source de FinOps para assessment contínuo de workspaces Databricks multi-cloud"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "Apache-2.0" }
+authors = [{ name = "ML Data e IA", email = "marcelo@mldata.com.br" }]
+keywords = ["finops", "databricks", "cost-optimization", "dbu", "spark"]
+
+[project.urls]
+Homepage = "https://github.com/marcelomldata/finops-databricks-framework"
+Issues = "https://github.com/marcelomldata/finops-databricks-framework/issues"
+
+# As dependências ficam em requirements.txt (núcleo) e requirements-billing.txt
+# (opcional). Este pyproject existe para tornar o pacote `src` IMPORTÁVEL:
+# `pip install -e .` no repo faz `from src.analyzers import ...` funcionar nos
+# notebooks (antes dava ModuleNotFoundError sem o repo no sys.path).
+[tool.setuptools.packages.find]
+include = ["src*"]

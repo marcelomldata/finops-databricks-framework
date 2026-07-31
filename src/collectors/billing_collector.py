@@ -189,8 +189,10 @@ def collect_billing_gcp(
                 "collect_timestamp": current_ts
             })
     except Exception as e:
-        pass
-    
+        # Antes: `pass` — a coleta de billing GCP falhava em silêncio e o
+        # assessment seguia como se não houvesse custo. Agora o erro aparece.
+        print(f"[billing_collector] coleta de billing GCP falhou: {e}")
+
     if billing_data:
         df = spark.createDataFrame(billing_data)
         df.write \
