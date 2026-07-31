@@ -1,8 +1,12 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, when, lit, sum as spark_sum, avg, max as spark_max,
-    count, struct, current_timestamp, round, concat_ws, desc
+    count, struct, concat_ws, desc
 )
+# `round` e `current_timestamp` NÃO são importados do Spark aqui de propósito:
+# neste módulo eles só apareciam DENTRO de dicts Python (o resultado do
+# assessment), e a versão Spark devolve `Column` — o `createDataFrame([dict])`
+# do notebook então estoura. Usamos o `round` builtin do Python e `datetime.now()`.
 from typing import Dict, List
 from datetime import datetime
 
@@ -137,7 +141,7 @@ def calculate_costs_score(spark: SparkSession, workspace_name: str) -> float:
         return update_costs_score_with_dbu(spark, workspace_name)
     except Exception:
         try:
-            df_costs = spark.read.format("delta").load("dbfs:/finops/gold/billing_costs_summary") \
+            df_costs = spark.read.format("delta").load("dbfs:/finops/gold/billing/costs_summary") \
                 .filter(col("workspace_name") == workspace_name)
             
             if df_costs.count() == 0:
@@ -213,7 +217,7 @@ def calculate_maturity_score(spark: SparkSession, workspace_name: str, weights: 
         "pipelines_score": round(pipelines_score, 4),
         "observability_score": round(observability_score, 4),
         "costs_score": round(costs_score, 4),
-        "process_timestamp": current_timestamp()
+        "process_timestamp": datetime.now()
     }
 
 def generate_recommendations(spark: SparkSession, workspace_name: str) -> List[Dict]:

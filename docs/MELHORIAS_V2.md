@@ -53,7 +53,7 @@ DBU_RATES = {
 - Para precisão total, requer integração Premium com billing cloud
 
 ### Evolução Futura
-- **v2.1**: Integração com system.billing.usage (quando disponível)
+- **v2.1**: Integração com system.billing.usage (GA — custo medido real, substitui a estimativa por uptime)
 - **v2.2**: Ajuste automático de taxas baseado em histórico
 - **Premium**: Integração completa com billing cloud APIs
 

@@ -26,7 +26,7 @@ def create_baseline(
     df_jobs = spark.read.format("delta").load("dbfs:/finops/gold/compute/jobs_summary") \
         .filter(col("workspace_name") == workspace_name)
     
-    df_tables = spark.read.format("delta").load("dbfs:/finops/gold/storage_workspace_summary") \
+    df_tables = spark.read.format("delta").load("dbfs:/finops/gold/storage/workspace_summary") \
         .filter(col("workspace_name") == workspace_name)
     
     total_clusters = df_clusters.count()

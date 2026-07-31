@@ -1,13 +1,14 @@
+# Núcleo do assessment — o que é preciso para coletar, processar e analisar.
 databricks-sql-connector>=3.0.0
 databricks-cli>=0.18.0
 pyspark>=3.5.0
 delta-spark>=3.0.0
-azure-identity>=1.15.0
-azure-mgmt-databricks>=2.0.0
-boto3>=1.34.0
-google-cloud-databricks>=1.0.0
 pandas>=2.0.0
 numpy>=1.24.0
 python-dotenv>=1.0.0
 requests>=2.31.0
 pyyaml>=6.0
+
+# A coleta de billing das nuvens é OPCIONAL (só se for usar o billing_collector).
+# Instale os SDKs da(s) sua(s) cloud separadamente:
+#   pip install -r requirements-billing.txt

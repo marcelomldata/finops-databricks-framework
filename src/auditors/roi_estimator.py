@@ -1,8 +1,10 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, when, lit, sum as spark_sum, avg, max as spark_max, min as spark_min,
-    count, datediff, desc, round
+    count, datediff, desc
 )
+# `round` de fora de propósito: só era usado no dict de resultado (Python), onde
+# a versão Spark viraria `Column` e quebraria o `createDataFrame`. Usa o builtin.
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
@@ -23,7 +25,7 @@ def estimate_cluster_savings(
     
     cluster = df_cluster.collect()[0]
     
-    df_costs = spark.read.format("delta").load("dbfs:/finops/gold/billing_costs_summary") \
+    df_costs = spark.read.format("delta").load("dbfs:/finops/gold/billing/costs_summary") \
         .filter(col("workspace_name") == workspace_name) \
         .orderBy(desc("date_parsed")) \
         .limit(30)
@@ -243,7 +245,7 @@ def calculate_total_roi(
                 total_estimated_monthly += savings.get("estimated_monthly_cost", savings.get("current_monthly_cost", 0.0))
                 total_monthly_savings += savings.get("estimated_monthly_savings", 0.0)
     
-    df_costs = spark.read.format("delta").load("dbfs:/finops/gold/billing_costs_summary") \
+    df_costs = spark.read.format("delta").load("dbfs:/finops/gold/billing/costs_summary") \
         .filter(col("workspace_name") == workspace_name) \
         .orderBy(desc("date_parsed")) \
         .limit(30)

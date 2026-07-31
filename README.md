@@ -19,7 +19,7 @@ Ser o framework open source de referência para assessment contínuo e otimizaç
 - ✅ **Revalidação Contínua** - Auditoria periódica automática
 - ✅ **Maturity Scoring** - 6 dimensões de análise
 - ✅ **Recomendações Priorizadas** - Ações acionáveis com ROI estimado
-- ✅ **Custos DBU Reais** - Estimativa baseada em uptime e taxas DBU (v2.0)
+- ✅ **Estimativa de Custo DBU** - Baseada em uptime e taxas DBU (v2.0). *Roadmap: custo medido real via `system.billing.usage` — ver [ROADMAP](ROADMAP.md).*
 - ✅ **Baseline Versionado** - Comparação entre múltiplos períodos (v2.0)
 - ✅ **Cost Allocation** - Alocação por domínio, pipeline, produto e SLA (v2.0, v2.1)
 - ✅ **Billing Reconciliado** - Comparação estimado vs real com score de confiança (v2.1)

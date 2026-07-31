@@ -1,7 +1,10 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, when, lit, sum as spark_sum, avg, round, current_timestamp
+    col, when, lit, sum as spark_sum, avg, current_timestamp
 )
+# `round` fica de FORA do import do Spark: aqui ele só era usado no dict de
+# resultado (valores Python), e a versão Spark devolveria `Column`, quebrando o
+# `createDataFrame`. `current_timestamp` permanece — é usado em colunas de verdade.
 from typing import Dict, Optional
 from datetime import datetime
 

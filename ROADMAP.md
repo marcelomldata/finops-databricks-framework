@@ -59,8 +59,8 @@ Veja [Melhorias V2](docs/MELHORIAS_V2.md) para detalhes completos.
 
 **Objetivo**: Integração com system tables e melhorias de precisão
 
-- [ ] Integração com system.billing.usage (quando disponível)
-- [ ] Ajuste automático de taxas DBU baseado em histórico
+- [ ] Integração com system.billing.usage (GA) — trocar a estimativa por uptime pelo custo MEDIDO real (SKU × list_prices)
+- [ ] Coleta via system.compute.node_timeline (histórico, inclui job clusters efêmeros) e system.lakeflow.jobs (custo por pipeline)
 - [ ] Validação de hierarquia de tags
 - [ ] Templates de tagging corporativo
 - [ ] Storytelling executivo

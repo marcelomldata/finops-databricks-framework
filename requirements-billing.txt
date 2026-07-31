@@ -1,0 +1,17 @@
+# SDKs OPCIONAIS para coleta de custo real das nuvens (src/collectors/billing_collector.py).
+# Instale apenas o(s) da(s) sua(s) cloud — nenhum é necessário para o assessment básico.
+#
+# NOTA: o caminho canônico de custo real é via system tables do próprio Databricks
+# (system.billing.usage × system.billing.list_prices) — ver ROADMAP e PLANO_DE_ACAO.
+# Estes SDKs cobrem o billing NATIVO da cloud (infra além do DBU), quando necessário.
+
+# Azure Cost Management
+azure-identity>=1.15.0
+azure-mgmt-costmanagement>=4.0.0
+
+# AWS Cost Explorer
+boto3>=1.34.0
+
+# GCP Billing / BigQuery export
+google-cloud-billing>=1.12.0
+google-cloud-bigquery>=3.0.0

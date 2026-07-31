@@ -34,10 +34,10 @@ def calculate_cost_per_tb(
     spark: SparkSession,
     workspace_name: str
 ) -> float:
-    df_storage = spark.read.format("delta").load("dbfs:/finops/gold/storage_workspace_summary") \
+    df_storage = spark.read.format("delta").load("dbfs:/finops/gold/storage/workspace_summary") \
         .filter(col("workspace_name") == workspace_name)
     
-    df_costs = spark.read.format("delta").load("dbfs:/finops/gold/costs_dbu_estimates") \
+    df_costs = spark.read.format("delta").load("dbfs:/finops/gold/costs/dbu_estimates") \
         .filter(col("workspace_name") == workspace_name)
     
     if df_storage.count() == 0 or df_costs.count() == 0:
@@ -65,7 +65,7 @@ def benchmark_workspace(
     df_jobs = spark.read.format("delta").load("dbfs:/finops/gold/compute/jobs_summary") \
         .filter(col("workspace_name") == workspace_name)
     
-    df_storage = spark.read.format("delta").load("dbfs:/finops/gold/storage_workspace_summary") \
+    df_storage = spark.read.format("delta").load("dbfs:/finops/gold/storage/workspace_summary") \
         .filter(col("workspace_name") == workspace_name)
     
     avg_utilization = 0.0

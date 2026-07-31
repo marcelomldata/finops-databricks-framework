@@ -23,7 +23,7 @@ def reconcile_dbu_vs_actual(
     
     if actual_cost is None:
         try:
-            df_billing = spark.read.format("delta").load("dbfs:/finops/gold/billing_costs_summary") \
+            df_billing = spark.read.format("delta").load("dbfs:/finops/gold/billing/costs_summary") \
                 .filter(col("workspace_name") == workspace_name) \
                 .orderBy(col("date_parsed").desc()) \
                 .limit(30)
