@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS finops_gold.billing_costs_summary (
 )
 USING DELTA
 PARTITIONED BY (workspace_name, year, month)
-LOCATION 'dbfs:/finops/billing/costs_summary'
+LOCATION 'dbfs:/finops/gold/billing/costs_summary'
 TBLPROPERTIES (
     'delta.autoOptimize.optimizeWrite' = 'true',
     'delta.autoOptimize.autoCompact' = 'true'
