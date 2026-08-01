@@ -191,8 +191,9 @@ def validate_storage_maintenance(spark: SparkSession, workspace_name: str) -> Li
             "issue_type": "missing_optimize",
             "table_name": table.full_table_name,
             "severity": "high" if table.size_gb > 100 else "medium",
-            "description": f"Tabela Delta sem OPTIMIZE: {table.num_files} arquivos, média {table.avg_file_size_mb:.2f} MB",
-            "recommended_action": "Executar OPTIMIZE ZORDER BY (colunas de join)",
+            "description": f"Tabela Delta com muitos arquivos pequenos: {table.num_files} arquivos, média {table.avg_file_size_mb:.2f} MB",
+            # 1.6 — clustering gerenciado no lugar de OPTIMIZE/Z-ORDER manual.
+            "recommended_action": "Habilitar Predictive Optimization e migrar para Liquid Clustering (CLUSTER BY nas colunas de filtro/join), em vez de OPTIMIZE/Z-ORDER manual recorrente",
             "estimated_impact": f"Redução de {table.num_files * 0.3:.0f} arquivos, melhoria de 30-50% em queries",
             "validation_timestamp": datetime.utcnow()
         })

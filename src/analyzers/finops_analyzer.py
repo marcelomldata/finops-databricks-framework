@@ -278,8 +278,13 @@ def generate_recommendations(spark: SparkSession, workspace_name: str) -> List[D
             "description": f"Tabela {table.full_table_name} tem {table.num_files} arquivos com média de {table.avg_file_size_mb:.2f} MB",
             "impact": "Médio",
             "complexity": "Baixa",
-            "action": "Executar OPTIMIZE e Z-ORDER",
-            "estimated_savings": "Melhoria de performance",
+            # 1.6 — recomendar clustering GERENCIADO, não OPTIMIZE/Z-ORDER manual.
+            # Com Predictive Optimization (compactação/clustering automáticos) e
+            # Liquid Clustering (CLUSTER BY, substitui partição+Z-ORDER) GA,
+            # mandar rodar Z-ORDER na mão soa datado a um sênior — e ainda vira
+            # dívida operacional (job recorrente). O certo é ligar o automático.
+            "action": "Habilitar Predictive Optimization no schema/catálogo e migrar a tabela para Liquid Clustering (CLUSTER BY nas colunas de filtro/join). Evita OPTIMIZE/Z-ORDER manual recorrente.",
+            "estimated_savings": "Menos arquivos pequenos + menos custo de manutenção manual",
             "process_timestamp": process_ts
         })
     
