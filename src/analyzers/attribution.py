@@ -14,15 +14,18 @@ já dá custo por JOB (usage_metadata.job_id) e por TAG. Aqui vem o granular:
 ⚠ RESSALVAS (declarar no relatório — schema verificado contra a doc oficial 2026):
 - `system.query.history` é **Public Preview**; só popula queries de **SQL warehouse /
   serverless** (query em cluster all-purpose clássico NÃO aparece).
-- Custo por query é **ATRIBUIÇÃO/ESTIMATIVA, não medição**: distribui TODO o custo do
-  warehouse na hora por task-time — o overhead/idle entra rateado (a soma fecha com a
-  fatura do warehouse, mas nenhuma query "gastou" o idle sozinha).
+- Custo por query é **ATRIBUIÇÃO/ESTIMATIVA, não medição**: distribui o custo do
+  warehouse na hora por task-time (o overhead/idle entra rateado). A soma fecha com o
+  custo do warehouse APENAS nas horas com query capturada; horas com custo mas sem
+  query em `query.history` (idle puro, cluster all-purpose clássico, ou o Preview não
+  populado) ficam FORA da atribuição — o total atribuído é ≤ a fatura.
 - `statement_text` pode vir truncado/vazio (customer-managed keys) → o `node_id` some e
   a query cai no bucket "não-atribuído". Reportamos o % não-atribuído (honestidade).
 
 Fontes: https://learn.microsoft.com/en-us/azure/databricks/admin/system-tables/query-history
         https://learn.microsoft.com/en-us/azure/databricks/admin/system-tables/billing
 """
+from datetime import date, timedelta
 from pyspark.sql import SparkSession, DataFrame
 from src.analyzers.real_cost import _janela, _validar_moeda
 
@@ -63,6 +66,7 @@ def custo_por_modelo_dbt(spark: SparkSession, dias: int = 30, moeda: str = "USD"
         WHERE q.compute.warehouse_id IS NOT NULL
           AND q.total_task_duration_ms > 0
           AND q.start_time >= TIMESTAMP('{inicio}')
+          AND q.start_time < TIMESTAMP('{fim}') + INTERVAL 1 DAY
       ),
       tot_hora AS (
         SELECT warehouse_id, hora, SUM(task_ms) AS task_ms_total
@@ -88,7 +92,11 @@ def tendencia_periodo(spark: SparkSession, dias: int = 30, moeda: str = "USD") -
     comparação honesta período-vs-período. `SUM` sempre (RETRACTION/RESTATEMENT se
     cancelam)."""
     ini_atual, fim_atual = _janela(dias)
-    ini_ant, fim_ant = _janela(2 * dias)  # janela anterior termina onde a atual começa
+    # Período anterior: MESMO tamanho, terminando 1 dia ANTES do início do atual —
+    # senão as janelas se sobrepõem e o "anterior" conta o atual duplicado.
+    d_ini = date.fromisoformat(ini_atual)
+    fim_ant = (d_ini - timedelta(days=1)).isoformat()
+    ini_ant = (d_ini - timedelta(days=dias)).isoformat()
     moeda = _validar_moeda(moeda)
     return spark.sql(f"""
       WITH prec AS (
