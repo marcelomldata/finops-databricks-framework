@@ -59,7 +59,7 @@ def _ler(spark: SparkSession, caminho: str):
 
 
 # ── Coleta de achados a partir das gold ───────────────────────────────────────
-def coletar_achados(spark: SparkSession, moeda: str = "USD") -> List[Achado]:
+def coletar_achados(spark: SparkSession, dias: int = 30) -> List[Achado]:
     achados: List[Achado] = []
 
     # 1. Clusters ociosos (desperdício direto) — cruza utilização × custo.
@@ -77,8 +77,10 @@ def coletar_achados(spark: SparkSession, moeda: str = "USD") -> List[Achado]:
         for r in ociosos.select("cluster_id", "cpu_medio_pct", "pct_minutos_idle",
                                 "cost").collect():
             custo_c = float(r["cost"] or 0.0)
-            # Desperdício ~ custo × fração ociosa (estimativa conservadora).
-            economia = custo_c * (float(r["pct_minutos_idle"] or 0) / 100.0)
+            # Desperdício ~ custo × fração ociosa, NORMALIZADO para /mês: o custo
+            # é da janela de `dias`, não do mês — sem o fator 30/dias a coluna
+            # "economia/mês" mentiria ao rodar com dias != 30.
+            economia = custo_c * (float(r["pct_minutos_idle"] or 0) / 100.0) * (30.0 / max(dias, 1))
             achados.append(Achado(
                 id=f"idle-{r['cluster_id']}",
                 dimensao="utilizacao", severidade="alta" if economia > 0 else "media",
@@ -111,15 +113,20 @@ def coletar_achados(spark: SparkSession, moeda: str = "USD") -> List[Achado]:
     if recs is not None:
         cols = set(recs.columns)
         for i, r in enumerate(recs.collect()):
-            acao = r["action"] if "action" in cols else (r["title"] if "title" in cols else "")
+            # `... or default`: a coluna pode existir com VALOR nulo na linha —
+            # `None.replace(...)` quebrava a coleta inteira (achado do code-reviewer).
+            acao = (r["action"] if "action" in cols else None) or \
+                   (r["title"] if "title" in cols else None) or ""
+            prioridade = ((r["priority"] if "priority" in cols else None) or "media").lower()
+            severidade = (prioridade.replace("critical", "alta").replace("high", "alta")
+                          .replace("medium", "media").replace("low", "baixa"))
             achados.append(Achado(
-                id=f"rec-{i}", dimensao=r["category"] if "category" in cols else "geral",
-                severidade=(r["priority"] if "priority" in cols else "media")
-                           .replace("high", "alta").replace("medium", "media").replace("low", "baixa"),
-                titulo=r["title"] if "title" in cols else str(acao)[:80],
-                recurso="-", metrica=r["description"] if "description" in cols else "",
-                economia_mensal=0.0,
-                esforco="medio", risco="baixo", acao=str(acao)))
+                id=f"rec-{i}",
+                dimensao=(r["category"] if "category" in cols else None) or "geral",
+                severidade=severidade if severidade in ("alta", "media", "baixa") else "media",
+                titulo=(r["title"] if "title" in cols else None) or str(acao)[:80],
+                recurso="-", metrica=(r["description"] if "description" in cols else None) or "",
+                economia_mensal=0.0, esforco="medio", risco="baixo", acao=str(acao)))
 
     return achados
 
@@ -172,6 +179,13 @@ def montar_swot(spark: SparkSession, achados: List[Achado]) -> dict:
 
 
 # ── Renderização Markdown ─────────────────────────────────────────────────────
+def _cel(x) -> str:
+    """Escapa uma célula de tabela Markdown. `metrica`/`acao` vêm de conteúdo
+    livre (descrição de recomendação) que pode ter `|` (cria célula fantasma) ou
+    quebra de linha (parte a linha da tabela e, no HTML, fecha `<table>` no meio)."""
+    return str(x).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
 def _tabela_achados(achados: List[Achado]) -> str:
     if not achados:
         return "_Nenhum achado nesta categoria._\n"
@@ -179,14 +193,14 @@ def _tabela_achados(achados: List[Achado]) -> str:
               "|---|---|---|---:|---|---|---|"]
     for a in achados:
         eco = f"{a.economia_mensal:,.0f}" if a.economia_mensal else "—"
-        linhas.append(f"| `{a.recurso}` | {a.titulo} | {a.metrica} | {eco} | "
-                      f"{a.esforco} | {a.risco} | {a.acao} |")
+        linhas.append(f"| `{_cel(a.recurso)}` | {_cel(a.titulo)} | {_cel(a.metrica)} | {eco} | "
+                      f"{a.esforco} | {a.risco} | {_cel(a.acao)} |")
     return "\n".join(linhas) + "\n"
 
 
 def renderizar_markdown(spark: SparkSession, workspace: str = "-",
                         dias: int = 30, moeda: str = "USD") -> str:
-    achados = coletar_achados(spark, moeda)
+    achados = coletar_achados(spark, dias)
     matriz = matriz_priorizacao(achados)
     swot = montar_swot(spark, achados)
     custo = _ler(spark, "gold/costs/real_usage")
