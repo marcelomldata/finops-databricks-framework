@@ -97,6 +97,30 @@ def destino_seguro(spark: SparkSession, catalogo: str, schema: str,
     try:
         aut = {p.lower().strip() for p in (principais_autorizados or [])}
         priv = ", ".join(f"'{p}'" for p in _PRIV_LEITURA)
+
+        # FURO FAIL-OPEN (security-lgpd): o information_schema do UC é ESCOPADO ao
+        # chamador — quem não é dono do destino pode NÃO enxergar todos os grants
+        # sobre ele, e a query não dá erro (só vêm menos linhas), então a
+        # enumeração ficaria incompleta e passaria como "seguro". Exigimos que
+        # quem roda seja DONO do catálogo E do schema de destino: só assim a lista
+        # de leitores é confiável. Se nem o owner é visível, `donos` vem curto →
+        # também recusa.
+        usuario = (spark.sql("SELECT current_user()").collect()[0][0] or "").lower().strip()
+        donos = spark.sql(f"""
+          SELECT catalog_owner AS o FROM system.information_schema.catalogs
+            WHERE catalog_name='{catalogo}'
+          UNION ALL
+          SELECT schema_owner FROM system.information_schema.schemata
+            WHERE catalog_name='{catalogo}' AND schema_name='{schema}'
+        """).collect()
+        donos_set = {(r["o"] or "").lower().strip() for r in donos}
+        if len(donos) < 2 or not donos_set.issubset({usuario}):
+            return (False, f"Quem roda ({usuario}) precisa ser DONO do catálogo E do schema de "
+                           f"destino ({catalogo}.{schema}). Sem isso, o Unity Catalog não expõe "
+                           "todos os grants do destino ao chamador e a checagem de segurança "
+                           "ficaria incompleta (fail-open). Use um catálogo+schema restrito de que "
+                           "você é dono para gravar o mapa.")
+
         leitores = spark.sql(f"""
           SELECT grantee AS principal FROM system.information_schema.schema_privileges
             WHERE catalog_name='{catalogo}' AND schema_name='{schema}'
@@ -191,9 +215,13 @@ def escanear(spark: SparkSession, catalogo_destino: str, schema_destino: str,
     destino que ele CONFIRMA (por allow-list) ser restrito antes de escrever.
     `principais_autorizados`: os únicos principals que podem ler o output (DPO/
     segurança). Retorna resumo."""
-    if not principais_autorizados:
-        raise RuntimeError("[exposure_scan] informe principais_autorizados (allow-list de "
-                           "quem pode ler o mapa do dado sensível) — não há default seguro.")
+    if not principais_autorizados or isinstance(principais_autorizados, str):
+        # `isinstance str`: um set-comprehension sobre string itera CARACTERES —
+        # a allow-list viraria {'d','p','o',...} e quase tudo cairia como não
+        # autorizado (fail-closed, mas mascara erro de config). Exige lista/set.
+        raise RuntimeError("[exposure_scan] principais_autorizados deve ser uma LISTA de "
+                           "principals autorizados (não string) — allow-list de quem pode ler o "
+                           "mapa do dado sensível. Não há default seguro.")
     ok, msg = _pode_ler_infoschema(spark)
     if not ok:
         raise RuntimeError(f"[exposure_scan] {msg}")
@@ -208,6 +236,12 @@ def escanear(spark: SparkSession, catalogo_destino: str, schema_destino: str,
     cand = candidatas_pii(spark).cache()
     grants = exposicao_grants(spark, cand).cache()  # toda linha JÁ é exposição ampla
     base = f"{catalogo_destino}.{schema_destino}"
+
+    # Furo nº2 (security-lgpd): um GRANT DIRETO numa tabela de saída de um run
+    # anterior poderia sobreviver ao overwrite (semântica ambígua no UC). DROP
+    # explícito zera os grants — a tabela nova herda só do schema já validado.
+    for _t in ("pii_mapa", "grants_amplos", "resumo_executivo"):
+        spark.sql(f"DROP TABLE IF EXISTS {base}.{_t}")
 
     # CAMADA 1 (RESTRITA) — mapa coluna-a-coluna. Sem valor de PII, só metadado.
     mapa = cand.select(
