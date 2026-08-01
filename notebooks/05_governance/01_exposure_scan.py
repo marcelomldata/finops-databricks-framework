@@ -21,13 +21,18 @@ spark = SparkSession.builder.appName("FinOps_ExposureScan").getOrCreate()
 # Destino OBRIGATÓRIO e restrito — sem default para lugar público de propósito.
 catalogo = os.getenv("EXPOSURE_CATALOGO")
 schema = os.getenv("EXPOSURE_SCHEMA")
-if not catalogo or not schema:
+# Allow-list dos ÚNICOS principals que podem ler o output (DPO/segurança), separados
+# por vírgula. A ferramenta RECUSA gravar se o destino for legível por qualquer um
+# fora desta lista (incluindo grant herdado do catálogo e os donos de schema/catálogo).
+principais = [p.strip() for p in (os.getenv("EXPOSURE_PRINCIPAIS", "").split(",")) if p.strip()]
+if not catalogo or not schema or not principais:
     raise ValueError(
-        "Defina EXPOSURE_CATALOGO e EXPOSURE_SCHEMA apontando para um schema RESTRITO "
-        "(legível só pelo DPO/segurança). O output é um mapa do dado sensível — não pode "
-        "ir para um schema público.")
+        "Defina EXPOSURE_CATALOGO, EXPOSURE_SCHEMA (schema RESTRITO) e EXPOSURE_PRINCIPAIS "
+        "(allow-list de quem pode ler o mapa, ex.: 'dpo@empresa.com,grupo-seguranca'). "
+        "O output é um mapa do dado sensível — não vai para schema público, e a ferramenta "
+        "aborta se o destino for legível por alguém fora da allow-list.")
 
-r = escanear(spark, catalogo, schema)
+r = escanear(spark, catalogo, schema, principais)
 
 print(f"Exposure Scan gravado em {r['destino']} (3 tabelas):")
 print("  - resumo_executivo : agregados/score — CIRCULÁVEL")

@@ -79,33 +79,50 @@ def _pode_ler_infoschema(spark: SparkSession) -> tuple:
                        f"admin — só o mínimo). Erro: {e}")
 
 
-# ── Segurança do OUTPUT: o destino é amplamente legível? (bloqueia gravação) ───
+# ── Segurança do OUTPUT: o destino é legível só por quem PODE? (bloqueia gravação) ─
+# Grupos amplos conhecidos, para a DIAGNOSE (exposicao_grants) sinalizar exposição.
 _GRUPOS_AMPLOS = ("account users", "users", "all users", "public")
+_PRIV_LEITURA = ("SELECT", "ALL PRIVILEGES", "MODIFY")
 
 
-def destino_seguro(spark: SparkSession, catalogo: str, schema: str) -> tuple:
-    """A saída é um MAPA de onde está o dado sensível — gravá-la num schema que
-    todo mundo lê AUMENTA a superfície de ataque. Antes de gravar, checamos os
-    grants do schema de destino; se houver SELECT/USE para um grupo amplo
-    (`account users` etc.), RECUSAMOS. Retorna (True, msg) ou (False, motivo)."""
+def destino_seguro(spark: SparkSession, catalogo: str, schema: str,
+                   principais_autorizados) -> tuple:
+    """ALLOW-LIST (não denylist): o destino — que é um MAPA do dado sensível — só é
+    seguro se TODO principal capaz de LER estiver na allow-list explícita
+    (DPO/segurança). Checa:
+    - grants de leitura no SCHEMA **e no CATÁLOGO** (grant de catálogo é HERDADO,
+      lê todas as tabelas — o furo que o code-reviewer pegou);
+    - os DONOS de schema e catálogo (owner contorna grant no UC).
+    Qualquer principal fora da allow-list ⇒ RECUSA. Fail-closed se não verificar."""
     try:
-        df = spark.sql(f"""
-          SELECT grantee, privilege_type
-          FROM system.information_schema.schema_privileges
-          WHERE catalog_name = '{catalogo}' AND schema_name = '{schema}'
+        aut = {p.lower().strip() for p in (principais_autorizados or [])}
+        priv = ", ".join(f"'{p}'" for p in _PRIV_LEITURA)
+        leitores = spark.sql(f"""
+          SELECT grantee AS principal FROM system.information_schema.schema_privileges
+            WHERE catalog_name='{catalogo}' AND schema_name='{schema}'
+              AND privilege_type IN ({priv})
+          UNION
+          SELECT grantee FROM system.information_schema.catalog_privileges
+            WHERE catalog_name='{catalogo}' AND privilege_type IN ({priv})
+          UNION
+          SELECT schema_owner FROM system.information_schema.schemata
+            WHERE catalog_name='{catalogo}' AND schema_name='{schema}'
+          UNION
+          SELECT catalog_owner FROM system.information_schema.catalogs
+            WHERE catalog_name='{catalogo}'
         """)
-        amplos = [r["grantee"] for r in df.collect()
-                  if (r["grantee"] or "").lower() in _GRUPOS_AMPLOS]
-        if amplos:
-            return (False, f"Destino {catalogo}.{schema} é legível por grupo amplo "
-                           f"({', '.join(set(amplos))}). Grave o Exposure Scan num schema "
-                           "RESTRITO (grant default-deny, allow-list só do DPO/segurança) — "
-                           "o output é um mapa do dado sensível.")
-        return (True, f"Destino {catalogo}.{schema} não tem grant amplo detectado")
+        fora = sorted({r["principal"] for r in leitores.collect()
+                       if (r["principal"] or "").lower().strip() not in aut})
+        if fora:
+            return (False, f"Destino {catalogo}.{schema} tem principals com leitura FORA da "
+                           f"allow-list (DPO/segurança): {', '.join(fora)}. O output é um mapa do "
+                           "dado sensível — grave num schema onde só os autorizados leem (revogue "
+                           "os demais, incluindo grants HERDADOS do catálogo e os donos).")
+        return (True, f"Destino {catalogo}.{schema}: todos os leitores estão na allow-list")
     except Exception as e:
-        # Fail-closed: se não consigo VERIFICAR o destino, não gravo às cegas.
-        return (False, f"Não consegui verificar os grants do destino {catalogo}.{schema} "
-                       f"— por segurança, não gravo sem confirmar que é restrito. Erro: {e}")
+        # Fail-closed: sem conseguir VERIFICAR, não gravo o mapa às cegas.
+        return (False, f"Não consegui verificar grants/donos do destino {catalogo}.{schema} — "
+                       f"por segurança, não gravo sem confirmar que é restrito. Erro: {e}")
 
 
 # ── Coleta (tudo metadado) ────────────────────────────────────────────────────
@@ -131,40 +148,65 @@ def candidatas_pii(spark: SparkSession) -> DataFrame:
         """)
         cand = cand.join(tags, ["table_catalog", "table_schema", "table_name", "column_name"], "left")
     except Exception:
-        cand = cand.withColumn("tag_name", F.lit(None)).withColumn("tag_value", F.lit(None))
+        # `.cast("string")`: um F.lit(None) cru é VoidType e quebra o saveAsTable.
+        cand = (cand.withColumn("tag_name", F.lit(None).cast("string"))
+                    .withColumn("tag_value", F.lit(None).cast("string")))
     return cand
 
 
 def exposicao_grants(spark: SparkSession, candidatas: DataFrame) -> DataFrame:
-    """Cruza as tabelas com coluna candidata a PII contra os grants: quem tem
-    SELECT, e destaca grupo AMPLO (o vetor nº1). Metadado puro."""
+    """Tabelas com PII expostas a um grupo AMPLO — em QUALQUER nível de herança:
+    grant direto na tabela, ou no SCHEMA, ou no CATÁLOGO (grant de catálogo lê
+    todas as tabelas). Ignorar a herança subnotificaria exposição — o falso-
+    negativo perigoso numa ferramenta de LGPD. Uma linha por (tabela, grantee,
+    nível). Metadado puro. `nivel` diz de onde vem a exposição."""
     from pyspark.sql import functions as F
     tabelas_pii = candidatas.select("table_catalog", "table_schema", "table_name").distinct()
-    priv = spark.sql("""
-      SELECT table_catalog, table_schema, table_name, grantee, privilege_type
-      FROM system.information_schema.table_privileges
-      WHERE privilege_type IN ('SELECT', 'ALL PRIVILEGES', 'MODIFY')
-    """)
-    j = tabelas_pii.join(priv, ["table_catalog", "table_schema", "table_name"], "inner")
-    grupos_amplos = [g for g in _GRUPOS_AMPLOS]
-    return j.withColumn("grant_amplo", F.lower(F.col("grantee")).isin(grupos_amplos))
+    grupos = [g for g in _GRUPOS_AMPLOS]
+    priv = ", ".join(f"'{p}'" for p in _PRIV_LEITURA)
+
+    amplo_tab = spark.sql(f"""SELECT table_catalog, table_schema, table_name, grantee
+        FROM system.information_schema.table_privileges WHERE privilege_type IN ({priv})""") \
+        .filter(F.lower("grantee").isin(grupos)).distinct()
+    amplo_sch = spark.sql(f"""SELECT catalog_name AS table_catalog, schema_name AS table_schema, grantee
+        FROM system.information_schema.schema_privileges WHERE privilege_type IN ({priv})""") \
+        .filter(F.lower("grantee").isin(grupos)).distinct()
+    amplo_cat = spark.sql(f"""SELECT catalog_name AS table_catalog, grantee
+        FROM system.information_schema.catalog_privileges WHERE privilege_type IN ({priv})""") \
+        .filter(F.lower("grantee").isin(grupos)).distinct()
+
+    cols = ["table_catalog", "table_schema", "table_name", "grantee", "nivel"]
+    r_tab = tabelas_pii.join(amplo_tab, ["table_catalog", "table_schema", "table_name"]) \
+        .withColumn("nivel", F.lit("tabela")).select(*cols)
+    r_sch = tabelas_pii.join(amplo_sch, ["table_catalog", "table_schema"]) \
+        .withColumn("nivel", F.lit("schema")).select(*cols)
+    r_cat = tabelas_pii.join(amplo_cat, ["table_catalog"]) \
+        .withColumn("nivel", F.lit("catalogo")).select(*cols)
+    return r_tab.unionByName(r_sch).unionByName(r_cat)
 
 
-def escanear(spark: SparkSession, catalogo_destino: str, schema_destino: str) -> dict:
+def escanear(spark: SparkSession, catalogo_destino: str, schema_destino: str,
+             principais_autorizados) -> dict:
     """Roda o Exposure Scan v1 (metadata-only) e grava DUAS camadas de saída num
-    destino que ele CONFIRMA ser restrito antes de escrever. Retorna resumo."""
+    destino que ele CONFIRMA (por allow-list) ser restrito antes de escrever.
+    `principais_autorizados`: os únicos principals que podem ler o output (DPO/
+    segurança). Retorna resumo."""
+    if not principais_autorizados:
+        raise RuntimeError("[exposure_scan] informe principais_autorizados (allow-list de "
+                           "quem pode ler o mapa do dado sensível) — não há default seguro.")
     ok, msg = _pode_ler_infoschema(spark)
     if not ok:
         raise RuntimeError(f"[exposure_scan] {msg}")
 
-    # PORTÃO DE SEGURANÇA: não grava o mapa do tesouro num schema público.
-    seguro, motivo = destino_seguro(spark, catalogo_destino, schema_destino)
+    # PORTÃO DE SEGURANÇA: não grava o mapa do tesouro se o destino for legível por
+    # alguém fora da allow-list (inclui grants herdados do catálogo e os donos).
+    seguro, motivo = destino_seguro(spark, catalogo_destino, schema_destino, principais_autorizados)
     if not seguro:
         raise RuntimeError(f"[exposure_scan] destino recusado — {motivo}")
 
     from pyspark.sql import functions as F
     cand = candidatas_pii(spark).cache()
-    grants = exposicao_grants(spark, cand).cache()
+    grants = exposicao_grants(spark, cand).cache()  # toda linha JÁ é exposição ampla
     base = f"{catalogo_destino}.{schema_destino}"
 
     # CAMADA 1 (RESTRITA) — mapa coluna-a-coluna. Sem valor de PII, só metadado.
@@ -173,8 +215,7 @@ def escanear(spark: SparkSession, catalogo_destino: str, schema_destino: str) ->
         "data_type", "tier_confianca", "tag_name", "tag_value")
     mapa.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{base}.pii_mapa")
 
-    tabelas_expostas = grants.filter(F.col("grant_amplo"))
-    tabelas_expostas.write.mode("overwrite").option("overwriteSchema", "true") \
+    grants.write.mode("overwrite").option("overwriteSchema", "true") \
         .saveAsTable(f"{base}.grants_amplos")
 
     # CAMADA 2 (CIRCULÁVEL) — só agregados/score, sem apontar coluna específica.
@@ -183,7 +224,7 @@ def escanear(spark: SparkSession, catalogo_destino: str, schema_destino: str) ->
         "por_tier": {r["tier_confianca"]: r["c"] for r in
                      cand.groupBy("tier_confianca").agg(F.count("*").alias("c")).collect()},
         "tabelas_com_pii": cand.select("table_catalog", "table_schema", "table_name").distinct().count(),
-        "tabelas_pii_com_grant_amplo": tabelas_expostas.select(
+        "tabelas_pii_com_grant_amplo": grants.select(
             "table_catalog", "table_schema", "table_name").distinct().count(),
         "ja_classificadas_por_tag": cand.filter(F.col("tag_name").isNotNull()).count(),
     }
