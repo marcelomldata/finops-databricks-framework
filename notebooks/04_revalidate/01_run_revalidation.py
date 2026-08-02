@@ -5,8 +5,32 @@ from src.auditors.report_generator import (
     generate_prioritized_backlog,
     generate_quick_wins_alerts
 )
+import json
 import os
 from datetime import datetime, timedelta
+
+
+def _flatten_executive_report(report: dict) -> dict:
+    """Achata o relatório executivo (dict ANINHADO) numa linha de escalares +
+    um blob JSON. `spark.createDataFrame([report])` estourava porque as chaves
+    `executive_summary`, `new_resources`, `maturity_breakdown` são sub-dicts e
+    `recommendations_status`/`critical_issues` são listas de dict — Spark não
+    infere esquema disso de forma estável. Aqui só sai tipo primitivo + string."""
+    summary = report.get("executive_summary", {}) or {}
+    new_res = report.get("new_resources", {}) or {}
+    maturity = report.get("maturity_breakdown", {}) or {}
+    flat = {
+        "workspace_name": report.get("workspace_name", ""),
+        "report_date": report.get("report_date", ""),
+        "baseline_date": report.get("baseline_date", ""),
+    }
+    flat.update({f"summary_{k}": v for k, v in summary.items()})
+    flat.update({f"new_{k}": v for k, v in new_res.items()})
+    flat.update({f"maturity_{k}": v for k, v in maturity.items()})
+    # As partes aninhadas (status de recomendações, issues críticas, roi) ficam
+    # preservadas como JSON — nada de dado é perdido, e nada aninhado vai ao Spark.
+    flat["report_json"] = json.dumps(report, default=str, ensure_ascii=False)
+    return flat
 
 spark = SparkSession.builder.appName("FinOps_Revalidation").getOrCreate()
 
@@ -19,7 +43,7 @@ print(f"Baseline date: {baseline_date}")
 
 executive_report = generate_executive_report(spark, workspace_name, baseline_date)
 
-df_report = spark.createDataFrame([executive_report])
+df_report = spark.createDataFrame([_flatten_executive_report(executive_report)])
 df_report.write \
     .format("delta") \
     .mode("overwrite") \
