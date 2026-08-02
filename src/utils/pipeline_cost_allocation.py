@@ -2,8 +2,47 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, when, lit, sum as spark_sum, avg, count, struct, current_timestamp
 )
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import datetime
+
+# Limiares (em horas) do SLA tier derivado da DURAÇÃO média — heurística interna.
+SLA_FAST_MAX_HOURS = 0.5
+SLA_SLOW_MIN_HOURS = 4.0
+
+
+def _derive_pipeline_meta(job_name: Optional[str], avg_duration_hours: float) -> Dict:
+    """Deriva pipeline/produto/SLA a partir do NOME do job — HEURÍSTICA FRÁGIL,
+    dependente de convenção de nomenclatura. Explicitada como tal:
+    `allocation_method='heuristica_nome_do_job'`.
+
+    - pipeline_name = trecho antes do 1º '_'; product_name = antes do 1º '-'.
+    - Robusto a nome None/vazio/sem separador (antes `job_name.split(...)` estourava
+      AttributeError em job sem nome).
+    - Se não há separador, o campo cai para '(indefinido)' em vez de repetir o nome
+      inteiro como se fosse um pipeline/produto de verdade.
+    """
+    name = (job_name or "").strip()
+    if not name:
+        pipeline_name = "(sem_nome)"
+        product_name = "(sem_nome)"
+    else:
+        pipeline_name = name.split("_", 1)[0] if "_" in name else "(indefinido)"
+        product_name = name.split("-", 1)[0] if "-" in name else "(indefinido)"
+
+    duration = avg_duration_hours or 0.0
+    if duration < SLA_FAST_MAX_HOURS:
+        sla_tier = "fast"
+    elif duration > SLA_SLOW_MIN_HOURS:
+        sla_tier = "slow"
+    else:
+        sla_tier = "standard"
+
+    return {
+        "pipeline_name": pipeline_name,
+        "product_name": product_name,
+        "sla_tier": sla_tier,
+    }
+
 
 def allocate_cost_by_pipeline(
     spark: SparkSession,
@@ -40,29 +79,24 @@ def allocate_cost_by_pipeline(
         total_runs = row.total_runs or 0
         avg_duration = row.avg_duration_hours or 0.0
         
-        pipeline_name = job_name.split("_")[0] if "_" in job_name else job_name
-        product_name = job_name.split("-")[0] if "-" in job_name else "default"
-        
-        sla_tier = "standard"
-        if avg_duration < 0.5:
-            sla_tier = "fast"
-        elif avg_duration > 4:
-            sla_tier = "slow"
-        
+        meta = _derive_pipeline_meta(job_name, avg_duration)
+
         pipeline_allocation.append({
             "workspace_name": workspace_name,
             "resource_type": "pipeline",
             "resource_id": str(job_id),
             "resource_name": job_name,
-            "pipeline_name": pipeline_name,
-            "product_name": product_name,
-            "sla_tier": sla_tier,
+            "pipeline_name": meta["pipeline_name"],
+            "product_name": meta["product_name"],
+            "sla_tier": meta["sla_tier"],
             "estimated_monthly_cost": total_cost * 30,
             "estimated_dbu_cost": total_cost,
             "cost_per_run": avg_cost_per_run,
             "total_runs_monthly": total_runs,
             "avg_duration_hours": avg_duration,
+            # Custo vem de job_runs; pipeline/produto/SLA são HEURÍSTICA de nome.
             "allocation_method": "job_runs",
+            "meta_derivation": "heuristica_nome_do_job",
             "process_timestamp": current_timestamp()
         })
     
