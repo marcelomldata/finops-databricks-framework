@@ -106,8 +106,13 @@ def collect_billing_aws(
         for group in result.get('Groups', []):
             service = group['Keys'][0] if len(group['Keys']) > 0 else None
             resource_id = group['Keys'][1] if len(group['Keys']) > 1 else None
-            cost = float(group['Metrics']['UnblendedCost']['Amount'])
-            
+            unblended = group['Metrics']['UnblendedCost']
+            cost = float(unblended['Amount'])
+            # BUG corrigido: antes gravava `result.get('Estimated', False)` (um
+            # booleano) na coluna `currency`. A moeda vem em `Metrics.UnblendedCost.Unit`
+            # (ex.: "USD") na resposta do Cost Explorer get_cost_and_usage.
+            currency = unblended.get('Unit') or "USD"
+
             billing_data.append({
                 "workspace_name": workspace_name,
                 "workspace_url": workspace_url,
@@ -116,7 +121,8 @@ def collect_billing_aws(
                 "service": service,
                 "resource_id": resource_id,
                 "cost": cost,
-                "currency": result.get('Estimated', False),
+                "currency": currency,
+                "is_estimated": bool(result.get('Estimated', False)),
                 "collect_timestamp": current_ts
             })
     
