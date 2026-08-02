@@ -78,32 +78,67 @@ def _build_cluster_cost_map(cost_rows: Iterable) -> Dict[str, Dict[str, float]]:
     return cost_map
 
 
+def _extract_cluster_id(instance) -> Optional[str]:
+    """Extrai o cluster_id de `cluster_instance` para casar por IGUALDADE.
+
+    Antes o match era `cluster_id in instance` (continência de string): um id
+    curto casava DENTRO de outro (`c-1` dentro de `c-12`), sobre-contando. Aqui
+    resolvemos o id exato. `cluster_instance` costuma ser um blob tipo
+    `{'cluster_id': 'c-1'}` (repr de dict) ou o próprio id em texto puro."""
+    if instance is None:
+        return None
+    s = str(instance).strip()
+    if not s:
+        return None
+    for loader in (json.loads, ast.literal_eval):
+        try:
+            v = loader(s)
+            if isinstance(v, dict):
+                cid = v.get("cluster_id") or v.get("clusterId")
+                return str(cid) if cid not in (None, "") else None
+        except (ValueError, SyntaxError, TypeError):
+            continue
+    return s  # não é dict: a própria string é o id
+
+
 def _map_job_costs(job_run_rows: Iterable,
                    cluster_cost_map: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, float]]:
-    """Custo por job a partir dos runs (BUG corrigido: antes o custo de job era
-    SEMPRE 0.0). Casa `cluster_instance` (string com o id do cluster do run) com
-    o custo do cluster em dbu_estimates. Deduplica por (job_id, cluster_id) para
-    NÃO multiplicar o custo mensal do cluster a cada run do mesmo job."""
-    seen_pairs = set()
-    job_costs: Dict[str, Dict[str, float]] = {}
+    """Custo por job a partir dos runs (BUG histórico: antes era SEMPRE 0.0).
+
+    Duas correções de rateio sobre a 1ª versão do fix (apontadas em revisão):
+      - casa o cluster por IGUALDADE do id extraído (`_extract_cluster_id`), não
+        por substring;
+      - PRORRATEIA o custo mensal do cluster entre os jobs DISTINTOS que rodaram
+        nele. Dar o custo cheio a cada job inflava: um cluster compartilhado por
+        N jobs somava N× o próprio custo. Com o rateio, a soma das parcelas de
+        job de um cluster é, no máximo, o custo do cluster.
+    Deduplica por (job_id, cluster_id): várias runs do mesmo job no mesmo cluster
+    contam uma vez. O rateio é aproximação por CONTAGEM de jobs (não há dado de
+    uso por run) — declarado como tal no `allocation_method` da linha."""
+    # 1) pares distintos (job, cluster) com id EXATO
+    pairs = set()
     for run in job_run_rows:
         job_id = getattr(run, "job_id", None)
         if job_id is None:
             continue
-        job_id = str(job_id)
-        instance = getattr(run, "cluster_instance", None)
-        if instance is None:
+        cid = _extract_cluster_id(getattr(run, "cluster_instance", None))
+        if not cid or cid not in cluster_cost_map:
             continue
-        instance = str(instance)
-        for cluster_id, costs in cluster_cost_map.items():
-            if cluster_id and cluster_id in instance:
-                pair = (job_id, cluster_id)
-                if pair in seen_pairs:
-                    continue
-                seen_pairs.add(pair)
-                bucket = job_costs.setdefault(job_id, {"monthly": 0.0, "dbu": 0.0})
-                bucket["monthly"] += costs["monthly"]
-                bucket["dbu"] += costs["dbu"]
+        pairs.add((str(job_id), cid))
+
+    # 2) quantos jobs distintos por cluster (denominador do rateio)
+    jobs_por_cluster: Dict[str, set] = {}
+    for job_id, cid in pairs:
+        jobs_por_cluster.setdefault(cid, set()).add(job_id)
+
+    # 3) cada job recebe a FRAÇÃO do custo do cluster (custo/nº de jobs no cluster)
+    job_costs: Dict[str, Dict[str, float]] = {}
+    for job_id, cid in pairs:
+        n = len(jobs_por_cluster[cid]) or 1
+        costs = cluster_cost_map[cid]
+        bucket = job_costs.setdefault(job_id, {"monthly": 0.0, "dbu": 0.0})
+        bucket["monthly"] += costs["monthly"] / n
+        bucket["dbu"] += costs["dbu"] / n
     return job_costs
 
 
@@ -177,10 +212,12 @@ def extract_cost_allocation_tags(
             "data_domain": tags["data_domain"] or "unallocated",
             "estimated_monthly_cost": costs["monthly"],
             "estimated_dbu_cost": costs["dbu"],
-            # Reflete SE o custo do job foi de fato casado a um cluster; sem isso
-            # um 0.0 legítimo (job sem run no período) se confundia com "não medido".
+            # Reflete SE o custo do job foi de fato casado a um cluster e que ele
+            # é uma PARCELA RATEADA do custo do cluster (não medição direta); sem
+            # isso um 0.0 legítimo (job sem run no período) se confundia com "não
+            # medido", e o número parecia mais preciso do que é.
             "allocation_method": (
-                ("tags" if tags["cost_center"] else "default") if has_cost
+                ("tags_rateio_cluster" if tags["cost_center"] else "rateio_cluster") if has_cost
                 else "sem_custo_casado"
             ),
             "tags": tags,
@@ -213,16 +250,41 @@ def get_cost_by_domain(
     if df_allocation.count() == 0:
         return {}
 
-    domain_costs = df_allocation \
-        .groupBy("cost_center", "business_unit", "data_domain") \
-        .agg({
-            "estimated_monthly_cost": "sum",
-            "estimated_dbu_cost": "sum"
-        }) \
-        .collect()
+    def _rollup(resource_type: str):
+        """Soma o custo por cada dimensão, para UM tipo de recurso. Acumula
+        (antes um dict-comprehension sobre linhas agrupadas por 3 dimensões
+        SOBRESCREVIA business_unit/data_domain repetidos — só a última linha
+        sobrevivia; agora soma de verdade)."""
+        rows = df_allocation.filter(col("resource_type") == resource_type) \
+            .groupBy("cost_center", "business_unit", "data_domain") \
+            .agg({"estimated_monthly_cost": "sum", "estimated_dbu_cost": "sum"}) \
+            .collect()
+        cc: Dict[str, float] = {}
+        bu: Dict[str, float] = {}
+        dd: Dict[str, float] = {}
+        for r in rows:
+            v = float(r["sum(estimated_monthly_cost)"] or 0.0)
+            cc[r.cost_center] = cc.get(r.cost_center, 0.0) + v
+            bu[r.business_unit] = bu.get(r.business_unit, 0.0) + v
+            dd[r.data_domain] = dd.get(r.data_domain, 0.0) + v
+        return cc, bu, dd
+
+    # AUTORITATIVO: o custo real está nos CLUSTERS (onde o DBU é gasto). Somar
+    # cluster + job na MESMA agregação contaria o mesmo dinheiro duas vezes — a
+    # linha de job carrega uma PARCELA rateada do custo do cluster onde rodou.
+    # Por isso o total por domínio vem das linhas de cluster; a visão por job é
+    # uma RE-ATRIBUIÇÃO do mesmo dinheiro (pelas tags do job), devolvida à parte
+    # e NUNCA somada com a de cluster.
+    cc, bu, dd = _rollup("cluster")
+    jcc, jbu, jdd = _rollup("job")
 
     return {
-        "by_cost_center": {row.cost_center: row["sum(estimated_monthly_cost)"] for row in domain_costs},
-        "by_business_unit": {row.business_unit: row["sum(estimated_monthly_cost)"] for row in domain_costs},
-        "by_data_domain": {row.data_domain: row["sum(estimated_monthly_cost)"] for row in domain_costs}
+        "by_cost_center": cc,
+        "by_business_unit": bu,
+        "by_data_domain": dd,
+        # Re-atribuição pelas tags do JOB — para comparar quem RODOU vs. quem
+        # é DONO do cluster. Não somar com as chaves acima (mesmo dinheiro).
+        "by_cost_center_via_jobs": jcc,
+        "by_business_unit_via_jobs": jbu,
+        "by_data_domain_via_jobs": jdd,
     }

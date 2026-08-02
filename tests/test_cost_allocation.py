@@ -72,10 +72,41 @@ def test_map_job_costs_bug_nao_e_mais_sempre_zero():
         SimpleNamespace(job_id=2, cluster_instance="{'cluster_id': 'c-2'}"),
     ]
     jc = _map_job_costs(runs, cmap)
-    # job 1: c-1 (não conta 2x) + c-2 = 140 / 14
-    assert jc["1"] == {"monthly": 140.0, "dbu": 14.0}
-    # job 2: só c-2
-    assert jc["2"] == {"monthly": 40.0, "dbu": 4.0}
+    # c-1 é só do job 1 (custo cheio); c-2 é compartilhado job 1+2 => RATEADO 50/50.
+    # job 1: c-1 (100/10) + metade de c-2 (20/2) = 120 / 12
+    assert jc["1"] == {"monthly": 120.0, "dbu": 12.0}
+    # job 2: metade de c-2 (rateio, não o custo cheio de 40) = 20 / 2
+    assert jc["2"] == {"monthly": 20.0, "dbu": 2.0}
+
+
+def test_map_job_costs_rateio_nao_estoura_o_custo_do_cluster():
+    # Regressão apontada em revisão: cluster compartilhado por 2 jobs não pode
+    # somar 2× o próprio custo. A soma das parcelas = custo do cluster.
+    cmap = {"c-1": {"monthly": 100.0, "dbu": 10.0}}
+    runs = [
+        SimpleNamespace(job_id=1, cluster_instance="{'cluster_id': 'c-1'}"),
+        SimpleNamespace(job_id=2, cluster_instance="{'cluster_id': 'c-1'}"),
+    ]
+    jc = _map_job_costs(runs, cmap)
+    assert jc["1"] == {"monthly": 50.0, "dbu": 5.0}
+    assert jc["2"] == {"monthly": 50.0, "dbu": 5.0}
+    assert jc["1"]["monthly"] + jc["2"]["monthly"] == 100.0  # não 200
+
+
+def test_map_job_costs_casa_por_igualdade_nao_substring():
+    # Bug antigo: 'c-1' casava DENTRO de 'c-12' (substring). Agora é igualdade.
+    cmap = {"c-12": {"monthly": 80.0, "dbu": 8.0}}
+    runs = [SimpleNamespace(job_id=5, cluster_instance="{'cluster_id': 'c-1'}")]
+    jc = _map_job_costs(runs, cmap)
+    assert jc == {}  # 'c-1' != 'c-12'
+
+
+def test_map_job_costs_cluster_instance_id_puro():
+    # cluster_instance pode vir como o id puro (não só como repr de dict).
+    cmap = {"c-1": {"monthly": 60.0, "dbu": 6.0}}
+    runs = [SimpleNamespace(job_id=9, cluster_instance="c-1")]
+    jc = _map_job_costs(runs, cmap)
+    assert jc["9"] == {"monthly": 60.0, "dbu": 6.0}
 
 
 def test_map_job_costs_sem_cluster_casado():
