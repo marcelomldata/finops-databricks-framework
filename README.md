@@ -4,293 +4,118 @@
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![PySpark](https://img.shields.io/badge/PySpark-3.5%2B-orange.svg)](https://spark.apache.org/)
 
-Framework open source completo de FinOps para assessment contínuo de workspaces Databricks multi-cloud.
+Framework **open source de assessment de FinOps** para Databricks. Coleta métricas do
+workspace, organiza em arquitetura medalhão (bronze/silver/gold), calcula um score de
+maturidade e gera **recomendações acionáveis** — para **priorizar onde otimizar custo**.
+Não substitui a fatura da nuvem nem é veredito de conformidade: é um levantamento para
+decidir onde agir primeiro.
 
-## 🎯 Visão
+> **Estado honesto (atualizado em 2026-08):** o núcleo de assessment (coleta → medalhão →
+> score → recomendações → relatório) é **executável e testado** nas partes puras. O **motor
+> de custo medido** (via `system.billing.usage`) e a **atribuição por modelo dbt** estão
+> **implementados, mas ainda não validados num Databricks de produção** — tratados aqui como
+> "prontos para validação", não como resultado garantido. Preferimos declarar isso a inflar.
 
-Ser o framework open source de referência para assessment contínuo e otimização de custos em ambientes Databricks multi-cloud, capacitando organizações a alcançarem maturidade FinOps através de práticas comprovadas e automação inteligente.
+## O que é real hoje (executável)
 
-## ✨ Características
+- **Arquitetura medalhão** bronze/silver/gold, com o fluxo coleta → processamento → análise
+  → revalidação, ponta a ponta em notebooks.
+- **Coleta** de clusters, jobs, runs e storage via API/SQL do Databricks.
+- **Estimativa de custo DBU** por `uptime × taxa` — declarada como **estimativa** (não
+  medição): a fatura real depende de preço negociado e descontos.
+- **Motor de custo medido** via `system.billing.usage × system.billing.list_prices`
+  (utilização por `system.compute.node_timeline`, custo por job via `system.lakeflow`), com
+  as limitações escritas no próprio código: DBU a **preço de lista** (tipicamente abaixo do
+  total faturado), janela de retenção das system tables, e um campo de **cobertura** para o
+  que ficou sem preço. *Implementado; a validar em ambiente cliente.*
+- **Atribuição de custo por modelo dbt e por tag** — cruza o `statement_id` do
+  `system.query.history` (hoje em **Public Preview**) com o comentário que o dbt injeta na
+  query, atribuindo o custo do warehouse ao modelo que o gerou. *Método implementado; a
+  validar em ambiente real.*
+- **Baseline versionado** — compara maturidade e custo entre períodos.
+- **Recomendações acionáveis** ancoradas ao recurso, com comandos de automação
+  **não-executáveis por padrão** (`can_execute=False`, exigindo aprovação): o framework
+  **sugere e mostra o comando + o rollback**. Há um modo `auto` **opt-in** (desligado por
+  padrão) que pode marcar `can_execute=True` para ações de baixo risco.
+- **Relatório técnico** (Markdown/HTML autocontido) com matriz **Desperdício × Esforço ×
+  Risco**, SWOT executivo e seção de **metodologia e limitações**.
+- **Testes de unidade** das fórmulas puras (custo, alocação, parser de tags, thresholds) que
+  rodam **sem Spark**.
 
-- ✅ **100% Open Source** - Arquitetura, modelo de dados e scripts completamente abertos
-- ✅ **Multi-Cloud** - Azure, AWS e GCP Databricks
-- ✅ **Multi-Metastore** - Unity Catalog e Hive Metastore
-- ✅ **Arquitetura Medalhão** - Bronze/Silver/Gold bem definido
-- ✅ **Revalidação Contínua** - Auditoria periódica automática
-- ✅ **Maturity Scoring** - 6 dimensões de análise
-- ✅ **Recomendações Priorizadas** - Ações acionáveis com ROI estimado
-- ✅ **Estimativa de Custo DBU** - Baseada em uptime e taxas DBU (v2.0). *Roadmap: custo medido real via `system.billing.usage` — ver [ROADMAP](ROADMAP.md).*
-- ✅ **Baseline Versionado** - Comparação entre múltiplos períodos (v2.0)
-- ✅ **Cost Allocation** - Alocação por domínio, pipeline, produto e SLA (v2.0, v2.1)
-- ✅ **Billing Reconciliado** - Comparação estimado vs real com score de confiança (v2.1)
-- ✅ **Safe Automation** - Alertas com ações sugeridas e comandos prontos (v2.1)
-- ✅ **Benchmarks Externos** - Comparação com níveis da indústria (v2.1)
-- ✅ **Observabilidade Avançada** - Análise de falhas, performance e correlação custo (v2.1)
+## Limites honestos (declarados de propósito — é o que torna a ferramenta crível)
+
+- O custo "real" via system tables é **DBU a preço de lista**: não inclui desconto de
+  contrato/compromisso. Use como **ordem de grandeza e tendência**, não como valor de fatura.
+- A **atribuição por pipeline/produto/SLA** depende de **convenção de nome de job / tags**.
+  Onde não há convenção, é **heurística explícita** (marcada como tal na saída), não medição.
+- A **atribuição de custo por job** cobre **jobs e serverless compute**; job rodando em
+  **all-purpose compute** não é faturado como job e cai na heurística de nome/tag, não na
+  medição por job.
+- Os limiares de nível (bom/médio/ruim) são **referências heurísticas internas — NÃO
+  benchmark de indústria** (não há fonte pública citável; são ponto de partida configurável).
+- O motor de custo medido e a atribuição dbt **ainda não foram executados contra um
+  Databricks de produção** — a validação em ambiente real é a próxima frente (ver Roadmap).
+- Exige **Unity Catalog** para o motor de custo real (as system tables são UC-only); o
+  caminho Hive Metastore cobre só a coleta básica.
+
+## Roadmap (ainda NÃO pronto — declarado como tal)
+
+- **Validação do motor de custo medido** e da atribuição dbt em ambiente cliente real.
+- **Reconciliação estimado × faturado** com a API de billing da nuvem (Azure Cost Management
+  / AWS Cost Explorer / GCP Billing) — hoje condicional à ingestão dessa fonte.
+- **Benchmarks externos** com fonte citável (hoje são heurísticos internos).
+- **Automação recorrente multi-workspace** end-to-end e alertas contínuos.
+- **Observabilidade** aprofundada (hoje é agregação simples de falhas/performance).
 
 ## Arquitetura
 
-### Camadas de Dados
-- **Bronze**: Métricas brutas coletadas via APIs
-- **Silver**: Métricas normalizadas e enriquecidas
-- **Gold**: KPIs, scores e rankings FinOps
-
-### Dimensões de Análise
-- Compute (Clusters & Jobs)
-- Storage (Delta Lake)
-- Data Governance & Qualidade
-- Pipelines & Orquestração
-- Custos & Billing
-
-### Suporte Multi-Cloud
-- Azure Databricks
-- AWS Databricks
-- GCP Databricks
-
-### Suporte Multi-Metastore
-- Unity Catalog
-- Hive Metastore (legado)
-
-## Estrutura do Projeto
+**Camadas de dados** — Bronze (bruto coletado) → Silver (normalizado/enriquecido) → Gold
+(KPIs, scores, rankings). **Dimensões** — Compute (clusters & jobs), Storage (Delta),
+Governança & Qualidade, Pipelines & Orquestração, Custos & Billing. **Multi-cloud** — Azure,
+AWS e GCP (a detecção é real; as taxas DBU default são iguais entre nuvens — ajuste às suas).
+**Multi-metastore** — Unity Catalog (necessário para o custo real) e Hive (coleta básica).
 
 ```
-finops-databricks/
-├── notebooks/
-│   ├── 01_collect/
-│   ├── 02_process/
-│   ├── 03_analyze/
-│   └── 04_revalidate/
-├── src/
-│   ├── collectors/
-│   ├── processors/
-│   ├── analyzers/
-│   ├── auditors/
-│   └── utils/
-├── sql/
-│   ├── ddl/
-│   └── queries/
-├── config/
-└── docs/
+finops-databricks-framework/
+├── src/                  # collectors, processors, analyzers, auditors, utils, reporting
+├── notebooks/            # 01_collect, 02_process, 03_analyze, 04_revalidate
+├── sql/ddl/              # definições de tabela (ilustrativas)
+├── tests/                # testes das fórmulas puras (sem Spark)
+├── config/  docs/  LICENSE  ROADMAP.md
 ```
 
 ## Instalação
 
-1. Instalar dependências: `pip install -r requirements.txt` e o pacote em modo editável: `pip install -e .` (torna `from src...` importável nos notebooks). Coleta de billing das nuvens é opcional: `pip install -r requirements-billing.txt`
-2. Copiar `env.example` para `.env` e configurar credenciais
-3. Executar DDLs em `sql/ddl/` para criar tabelas
-4. Configurar `config/config.yaml` com workspaces
-5. Executar notebooks de coleta
-6. Processar camadas Bronze/Silver/Gold
-7. Executar análise FinOps
-
-## 🚀 Quick Start
-
 ```bash
-# 1. Clone o repositório
-git clone https://github.com/marcelomldata/finops-databricks-framework/finops-databricks-framework.git
-cd finops-databricks-framework
-
-# 2. Instale dependências
 pip install -r requirements.txt
-
-# 3. Configure variáveis de ambiente
-cp env.example .env
-# Edite .env com suas credenciais
-
-# 4. Execute DDLs no Databricks (em ordem)
-# - sql/ddl/bronze_ddl.sql
-# - sql/ddl/silver_ddl.sql
-# - sql/ddl/gold_ddl.sql
-# - sql/ddl/gold_baselines_ddl.sql (v2.0)
-
-# 5. Execute coleta
-# Execute notebooks em notebooks/01_collect/
-
-# 6. Processe dados
-# Execute notebooks em notebooks/02_process/
-
-# 7. Analise e crie baseline
-# Execute notebooks em notebooks/03_analyze/
+pip install -e .                          # torna `from src...` importável nos notebooks
+pip install -r requirements-billing.txt   # opcional: SDKs de billing das nuvens
+cp env.example .env                        # configure credenciais/workspaces
 ```
 
-**📖 Para instruções detalhadas:**
-- [Quick Start](docs/QUICK_START.md) - Comece em 15 minutos
-- [HOW TO Completo](docs/HOW_TO.md) - Guia detalhado passo a passo
+Depois: execute os DDLs em `sql/ddl/`, rode os notebooks de coleta → processamento →
+análise. Guia passo a passo em [docs/QUICK_START.md](docs/QUICK_START.md) e
+[docs/HOW_TO.md](docs/HOW_TO.md).
 
-## 📚 Documentação
+## O que é aberto e o que é serviço
 
-### Guias Técnicos
-- [HOW TO Completo](docs/HOW_TO.md) - Guia passo a passo
-- [Arquitetura](docs/arquitetura.md) - Visão técnica detalhada
-- [Implementação](docs/implementacao.md) - Guia de implementação
-- [Revalidação](docs/revalidacao.md) - Processo de auditoria contínua
-- [Modelo de Dados](docs/MODELO_DADOS.md) - Documentação completa do modelo
-- [Segurança](docs/SEGURANCA.md) - Proteção de credenciais e boas práticas
+**Aberto (este repositório, Apache 2.0):** toda a arquitetura, o modelo de dados, os scripts
+de coleta (inclusive os coletores de billing das nuvens), as regras de diagnóstico, o motor
+de custo (estimado e medido), a atribuição por dbt/tag, o baseline e o relatório técnico.
 
-### Comercial
-- [Exemplos Concretos](docs/EXEMPLOS_CONCRETOS.md) - Casos de uso reais
-- [Embalagem Comercial](docs/EMBALAGEM_COMERCIAL.md) - Pacotes de serviços
-- [Open vs Premium](docs/OPEN_VS_PREMIUM.md) - O que está aberto e fechado
-- [Professional Services](docs/PROFESSIONAL_SERVICES.md) - Serviços premium
+**Serviço profissional (ML Data e IA):** a **implementação e validação em ambiente real**, a
+calibração da reconciliação com a fatura da nuvem, os playbooks de correção profunda
+(reescrita de pipeline, particionamento, refatoração de join) e os dashboards executivos.
+Não é "código escondido" — é o **trabalho de aplicar e validar** o framework no seu ambiente.
 
-### Estratégico
-- [Branding](docs/BRANDING.md) - Visão, missão e escopo
-- [Roadmap](ROADMAP.md) - Roadmap público
+## Precisa implementar, validar e agir sobre o diagnóstico?
 
-## 🎯 O que está Aberto (100% Open Source)
+Rodar o assessment, **validar as estimativas contra a sua fatura real** e executar a
+otimização é o trabalho da **[ML Data e IA](mailto:marcelo@mldata.com.br)**.
 
-✅ **Arquitetura Completa**
-- Visão Bronze/Silver/Gold
-- Fluxo de assessment → revalidação
-- Diagramas e padrões
+## Contribuindo · Licença
 
-✅ **Modelo de Dados FinOps**
-- Tabelas de métricas
-- Campos e KPIs
-- Scores e dicionário de dados
+Contribuições bem-vindas ([CONTRIBUTING.md](CONTRIBUTING.md)). Licenciado sob
+[Apache License 2.0](LICENSE). Roadmap público em [ROADMAP.md](ROADMAP.md).
 
-✅ **Scripts de Coleta**
-- Listar clusters, jobs, tabelas
-- Coletar métricas básicas
-- Ler system tables
-
-✅ **Regras de Diagnóstico**
-- "Cluster ligado > X horas sem job"
-- "Tabela sem leitura há X dias"
-- "Join sem broadcast potencial"
-
-✅ **Checklist FinOps**
-- Health check completo
-- Material de referência
-
-✅ **Documentação Completa**
-- HOW TO básico
-- Como rodar assessment
-- Como interpretar scores
-
-## 🔒 O que está Fechado (Premium/Consultoria)
-
-❌ **Automação Completa End-to-End**
-- Orquestração multi-workspace
-- Jobs recorrentes automatizados
-- Alertas contínuos integrados
-
-❌ **Integração Real com Billing Cloud**
-- Azure Cost Management API
-- AWS Cost Explorer API
-- GCP Billing Export
-
-❌ **Cálculo Avançado de ROI**
-- Modelos calibrados por workload
-- Cenários conservador vs agressivo
-- Margem de erro precisa
-
-❌ **Playbooks de Correção Profunda**
-- Reescrita de pipelines
-- Refatoração de joins
-- Estratégia de particionamento
-
-❌ **Dashboards Executivos Prontos**
-- Dashboard final implementado
-- Storytelling executivo
-- Métricas comparativas
-
-❌ **Templates Corporativos**
-- Naming corporativo
-- Ownership obrigatório
-- Retenção por domínio
-- SLA técnico
-
-## 💼 Professional Services
-
-**Precisa de ajuda para implementar? Fale com a ML Data e IA.**
-
-Oferecemos serviços profissionais para acelerar sua jornada FinOps:
-- Implementação completa
-- Automação end-to-end
-- Integração com billing cloud
-- Cálculo avançado de ROI
-- Playbooks de correção
-- Dashboards executivos
-- Templates corporativos
-
-[Saiba mais](docs/PROFESSIONAL_SERVICES.md)
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Veja [CONTRIBUTING.md](CONTRIBUTING.md) para diretrizes.
-
-## 📄 Licença
-
-Este projeto está licenciado sob a [Apache License 2.0](LICENSE).
-
-## 🗺️ Roadmap
-
-Veja nosso [Roadmap Público](ROADMAP.md) para conhecer as próximas funcionalidades.
-
-## 📋 Estrutura do Projeto
-
-```
-finops-databricks-framework/
-├── src/                    # Código fonte (100% open source)
-│   ├── collectors/         # Coletores de métricas
-│   ├── processors/         # Processadores Bronze/Silver/Gold
-│   ├── analyzers/          # Analisadores FinOps
-│   ├── auditors/           # Auditores de revalidação
-│   └── utils/              # Utilitários
-├── notebooks/               # Notebooks de execução (100% open source)
-│   ├── 01_collect/         # Coleta de métricas
-│   ├── 02_process/         # Processamento
-│   ├── 03_analyze/         # Análise
-│   └── 04_revalidate/     # Revalidação
-├── sql/                     # DDLs e queries (100% open source)
-│   ├── ddl/                # Definições de tabelas
-│   └── queries/            # Queries de análise
-├── config/                  # Configurações (100% open source)
-├── docs/                    # Documentação completa
-├── LICENSE                  # Apache 2.0
-├── CONTRIBUTING.md          # Guia de contribuição
-└── ROADMAP.md              # Roadmap público
-```
-
-## 🎯 Status do Projeto
-
-- ✅ **v1.0.0** - Release inicial completa
-- ✅ **v2.0.0** - Melhorias críticas implementadas
-  - Integração real com custos DBU (open source)
-  - Baseline técnico versionado
-  - Cost allocation por domínio
-- ✅ **v2.1.0** - Melhorias enterprise implementadas
-  - Reconciliador de billing (read-only)
-  - Cost allocation por pipeline/produto/SLA
-  - Safe automation (alertas com ações)
-  - Benchmarks externos
-  - Observabilidade avançada
-- 🚀 **Em desenvolvimento** - Veja [ROADMAP.md](ROADMAP.md), [Melhorias V2](docs/MELHORIAS_V2.md) e [Lacunas e Evolução](docs/LACUNAS_EVOLUCAO.md)
-
-## ⚠️ Nota Importante
-
-Este framework é **100% open source** para assessment básico. Funcionalidades avançadas (automação completa, integração billing, dashboards executivos) estão disponíveis através de [Professional Services](docs/PROFESSIONAL_SERVICES.md).
-
-Veja [Open vs Premium](docs/OPEN_VS_PREMIUM.md) para detalhes completos.
-
-## 📦 Versão Atual
-
-**v2.1.0** - Melhorias enterprise implementadas:
-- ✅ Reconciliador de billing (read-only)
-- ✅ Cost allocation por pipeline/produto/SLA
-- ✅ Safe automation (alertas com ações)
-- ✅ Benchmarks externos (comparação com indústria)
-- ✅ Observabilidade avançada (falhas, performance, correlação)
-
-**v2.0.0** - Melhorias críticas:
-- ✅ Integração real com custos DBU (open source)
-- ✅ Baseline técnico versionado
-- ✅ Cost allocation por domínio
-- ✅ Modelo operacional FinOps
-
-Veja [CHANGELOG.md](CHANGELOG.md) para histórico completo e [Lacunas e Evolução](docs/LACUNAS_EVOLUCAO.md) para detalhes das melhorias.
-
-## Contato: marcelo@mldata.com.br
-
-- Issues: [GitHub Issues](https://github.com/marcelomldata/finops-databricks-framework/issues)
-- Professional Services: [ML Data e IA](docs/PROFESSIONAL_SERVICES.md)
+Contato: marcelo@mldata.com.br
