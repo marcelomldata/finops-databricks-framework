@@ -8,6 +8,15 @@ from pyspark.sql.functions import (
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
+# ── Constantes de custo (referência heurística interna, NÃO medição) ──────────
+# Hoisted de literais espalhados pelas funções para (a) uma única fonte da
+# verdade, (b) deixar explícito que são premissas de bolso, e (c) serem testáveis.
+HOURLY_COST_PER_WORKER_USD = 0.5     # custo/hora por worker (premissa)
+STORAGE_COST_PER_GB_MONTH_USD = 0.023  # ~storage cloud object por GB/mês
+HOURLY_COST_PER_JOB_RUN_USD = 2.0    # custo/hora por run de job (premissa)
+MONTHS_PER_YEAR = 12
+
+
 def estimate_cluster_savings(
     spark: SparkSession,
     workspace_name: str,
@@ -32,8 +41,8 @@ def estimate_cluster_savings(
     
     avg_daily_cost = df_costs.agg(avg("daily_cost_usd").alias("avg_cost")).collect()[0].avg_cost or 0.0
     
-    hourly_cost_per_worker = 0.5
-    
+    hourly_cost_per_worker = HOURLY_COST_PER_WORKER_USD
+
     savings = {}
     
     if action == "terminate_idle":
@@ -102,8 +111,8 @@ def estimate_storage_savings(
     
     table = df_table.collect()[0]
     
-    storage_cost_per_gb_month = 0.023
-    
+    storage_cost_per_gb_month = STORAGE_COST_PER_GB_MONTH_USD
+
     savings = {}
     
     if action == "archive_abandoned":
@@ -175,8 +184,8 @@ def estimate_job_optimization_savings(
     
     job = df_job.collect()[0]
     
-    hourly_cost_per_run = 2.0
-    
+    hourly_cost_per_run = HOURLY_COST_PER_JOB_RUN_USD
+
     savings = {}
     
     if action == "fix_failures":
