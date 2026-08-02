@@ -3,6 +3,12 @@ from pyspark.sql.functions import col, when, lit, avg, count, sum as spark_sum
 from typing import Dict, Optional
 from datetime import datetime
 
+# ⚠ IMPORTANTE (honestidade): estes limiares NÃO são um "benchmark de indústria".
+# São uma REFERÊNCIA HEURÍSTICA INTERNA (regras de bolso da mldata), sem base de
+# pares nem fonte pública citável. O rótulo antigo ("benchmarks da indústria")
+# era uma alegação não sustentável para público sênior — foi rebaixado no output.
+BENCHMARK_SOURCE = "referência heurística interna (não é benchmark de indústria)"
+
 BENCHMARK_METRICS = {
     "cost_per_tb": {
         "excellent": 50.0,
@@ -29,6 +35,32 @@ BENCHMARK_METRICS = {
         "poor": 0.50
     }
 }
+
+def get_benchmark_level(value: float, metric: str, reverse: bool = False,
+                        benchmarks: Dict = None) -> str:
+    """Classifica `value` em excellent/good/average/poor contra os limiares
+    heurísticos internos. `reverse=True` para métricas em que MENOR é melhor
+    (custo, % de dado frio). Extraída para o módulo para ser testável sem Spark."""
+    thresholds = (benchmarks or BENCHMARK_METRICS)[metric]
+    if reverse:
+        if value <= thresholds["excellent"]:
+            return "excellent"
+        elif value <= thresholds["good"]:
+            return "good"
+        elif value <= thresholds["average"]:
+            return "average"
+        else:
+            return "poor"
+    else:
+        if value >= thresholds["excellent"]:
+            return "excellent"
+        elif value >= thresholds["good"]:
+            return "good"
+        elif value >= thresholds["average"]:
+            return "average"
+        else:
+            return "poor"
+
 
 def calculate_cost_per_tb(
     spark: SparkSession,
@@ -84,28 +116,7 @@ def benchmark_workspace(
         cold_data_pct = cold_tb / total_tb if total_tb > 0 else 0.0
     
     benchmarks = BENCHMARK_METRICS
-    
-    def get_benchmark_level(value: float, metric: str, reverse: bool = False) -> str:
-        thresholds = benchmarks[metric]
-        if reverse:
-            if value <= thresholds["excellent"]:
-                return "excellent"
-            elif value <= thresholds["good"]:
-                return "good"
-            elif value <= thresholds["average"]:
-                return "average"
-            else:
-                return "poor"
-        else:
-            if value >= thresholds["excellent"]:
-                return "excellent"
-            elif value >= thresholds["good"]:
-                return "good"
-            elif value >= thresholds["average"]:
-                return "average"
-            else:
-                return "poor"
-    
+
     cost_per_tb_level = get_benchmark_level(cost_per_tb, "cost_per_tb", reverse=True)
     utilization_level = get_benchmark_level(avg_utilization, "cluster_utilization")
     success_rate_level = get_benchmark_level(avg_success_rate, "job_success_rate")
@@ -178,6 +189,10 @@ def benchmark_workspace(
         "overall_benchmark": {
             "score": round(total_score, 2),
             "level": overall_level,
-            "interpretation": f"Workspace está {overall_level} comparado a benchmarks da indústria"
+            "reference_source": BENCHMARK_SOURCE,
+            "interpretation": (
+                f"Workspace classificado como '{overall_level}' contra "
+                f"{BENCHMARK_SOURCE}"
+            )
         }
     }
